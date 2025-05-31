@@ -1,0 +1,147 @@
+﻿<Window x:Class="DigitalCampusGIS.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:DigitalCampusGIS"
+        mc:Ignorable="d"
+        Title="帮助文档 - 数字校园 GIS 系统" Height="600" Width="700" MinHeight="400" MinWidth="500"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="#F5F5F5">
+  <Grid Margin="15">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <FlowDocumentScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="10" Background="White" BorderBrush="#D0D0D0" BorderThickness="1">
+      <FlowDocument FontSize="14" FontFamily="Microsoft YaHei">
+        <Paragraph FontSize="20" FontWeight="Bold" Margin="0,0,0,15">数字校园 GIS 系统 - 帮助文档</Paragraph>
+
+        <Paragraph FontWeight="SemiBold" FontSize="16" Margin="0,10,0,5">地图视图</Paragraph>
+        <List MarkerStyle="Disc" Margin="20,0,0,10">
+          <ListItem>
+            <Paragraph>地图可以通过鼠标拖动进行平移。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>可以使用鼠标滚轮或右下角的 +/- 按钮进行缩放。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>右下角显示当前地图比例尺。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>顶部工具栏的“切换地图类型”按钮可以在普通街道地图和卫星影像图之间切换。</Paragraph>
+          </ListItem>
+        </List>
+
+        <Paragraph FontWeight="SemiBold" FontSize="16" Margin="0,10,0,5">校区管理</Paragraph>
+        <List MarkerStyle="Disc" Margin="20,0,0,10">
+          <ListItem>
+            <Paragraph>使用顶部的“选择校区”下拉框可以在不同的校区之间切换视图。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>点击“校区管理...”按钮可以打开校区管理窗口。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>在校区管理窗口中，您可以：</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>在左侧列表中选择要编辑的校区。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>在右侧编辑校区的名称、中心点经纬度、默认缩放级别。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>（可选）为校区选择一个叠加图像文件（如校园平面图），并设置其精确的地理边界坐标。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“添加”按钮创建一个新校区。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>选中一个校区后，点击“删除”按钮将其移除。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>完成编辑后，点击“保存更改”按钮保存所有修改；点击“取消”则放弃更改。</Paragraph>
+          </ListItem>
+        </List>
+
+        <Paragraph FontWeight="SemiBold" FontSize="16" Margin="0,10,0,5">POI (兴趣点) 管理 (右侧面板)</Paragraph>
+        <List MarkerStyle="Disc" Margin="20,0,0,10">
+          <ListItem>
+            <Paragraph>
+              <Bold>筛选与搜索:</Bold> 可以按预设类别筛选 POI，或在搜索框中输入关键词（名称或描述）进行搜索。点击“清除”按钮重置筛选和搜索。
+            </Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>
+              <Bold>图层控制:</Bold> 可以通过勾选或取消勾选不同的类别复选框来控制地图上对应类别 POI 的显示和隐藏。
+            </Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>
+              <Bold>POI 列表:</Bold> 显示当前筛选/搜索条件下可见的 POI 及其基本信息。点击列表项会尝试在地图上定位该 POI。
+            </Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>
+              <Bold>编辑/删除:</Bold> 在列表中选中一个 POI 后，可以点击“编辑选中项”按钮将其信息加载到下方的编辑表单中进行修改，或点击“删除选中项”按钮将其删除（会弹出确认框）。
+            </Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>
+              <Bold>添加/编辑表单:</Bold>
+            </Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“新建 POI”按钮清空表单，准备添加新的 POI。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>输入或修改 POI 的名称、经纬度、类别和描述。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“选择图标...”按钮为 POI 选择一个自定义图标文件。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“添加照片...”按钮可以为 POI 关联一个或多个照片文件。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>在照片列表中选中一张照片后，可以点击“移除选中照片”按钮解除关联。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>完成编辑或添加后，点击“保存 POI”按钮（编辑时显示为“更新 POI”）来保存更改。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>
+              <Bold>导入/导出:</Bold>
+            </Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“导入 POI 文件”按钮可以从本地选择 JSON 或 CSV 文件导入 POI 数据（会覆盖当前列表）。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“保存列表”按钮可以将当前内存中的所有 POI 数据导出为 JSON 文件。</Paragraph>
+          </ListItem>
+          <ListItem Margin="20,0,0,0">
+            <Paragraph>点击“加载列表”按钮可以从本地选择 JSON 文件加载 POI 数据（会覆盖当前列表）。</Paragraph>
+          </ListItem>
+        </List>
+
+        <Paragraph FontWeight="SemiBold" FontSize="16" Margin="0,10,0,5">地图导出</Paragraph>
+        <List MarkerStyle="Disc" Margin="20,0,0,10">
+          <ListItem>
+            <Paragraph>点击顶部工具栏的“导出地图图片...”按钮。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>在弹出的对话框中选择保存位置、文件名和图片格式（PNG 或 JPG）。</Paragraph>
+          </ListItem>
+          <ListItem>
+            <Paragraph>点击“保存”即可将当前地图可视区域导出为图片。</Paragraph>
+          </ListItem>
+        </List>
+
+      </FlowDocument>
+    </FlowDocumentScrollViewer>
+
+    <Button Grid.Row="1" Content="关闭" Width="80" Height="30" HorizontalAlignment="Right" Margin="0,10,0,0" Click="CloseButton_Click" IsCancel="True"/>
+  </Grid>
+</Window>
+
