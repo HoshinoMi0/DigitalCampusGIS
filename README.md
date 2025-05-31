@@ -100,24 +100,3 @@
 4.  **其他功能**:
     * 点击“导出地图图片...”可将当前地图视图保存为图片。
     * 点击“帮助”按钮查看帮助文档。
-
-## 文件结构 (主要文件/文件夹)
-DigitalCampusGIS/
-├── DigitalCampusGIS.sln                # Visual Studio 解决方案文件
-├── DigitalCampusGIS/                   # 主项目文件夹
-│   ├── MainWindow.xaml               # 主窗口界面定义
-│   ├── MainWindow.xaml.cs            # 主窗口后端逻辑
-│   ├── CampusManagementWindow.xaml     # 校区管理窗口界面
-│   ├── CampusManagementWindow.xaml.cs  # 校区管理窗口逻辑
-│   ├── PoiDetailWindow.xaml          # POI 详情窗口界面
-│   ├── PoiDetailWindow.xaml.cs       # POI 详情窗口逻辑
-│   ├── HelpWindow.xaml               # 帮助窗口界面
-│   ├── HelpWindow.xaml.cs            # 帮助窗口逻辑
-│   ├── map.html                      # 嵌入 WebView2 的地图页面
-│   ├── campuses.json                 # (示例) 校区配置文件
-│   ├── Icons/                        # 存储 POI 图标的文件夹
-│   ├── PoiImages/                    # 存储 POI 照片的文件夹
-│   ├── Overlays/                     # 存储校区叠加图的文件夹
-│   └── ... (其他项目文件如 App.xaml, .csproj, packages.config 等)
-└── .gitignore                          # Git 忽略配置文件
-
