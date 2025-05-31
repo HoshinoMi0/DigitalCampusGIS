@@ -1,0 +1,490 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>百度地图</title>
+    <style type="text/css">
+        /* 基本样式，让地图容器铺满整个页面 */
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; /* 防止出现滚动条 */ }
+        #map-container { height: 100%; width: 100%; }
+        /* 信息窗口样式 */
+        .poi-image-container img { max-width: 100px; /* 限制图片最大宽度 */ max-height: 100px; /* 限制图片最大高度 */ margin: 2px; border: 1px solid #ccc; vertical-align: middle; }
+        .custom-poi-label { position: absolute; /* 必须是绝对定位 */ background-color: rgba(50, 50, 50, 0.75); color: #ffffff; border: 1px solid rgba(50, 50, 50, 0.75); border-radius: 3px; font-family: "Microsoft YaHei", "微软雅黑", sans-serif; white-space: nowrap; box-shadow: 1px 1px 3px rgba(0,0,0,0.5); cursor: default; /* 或 pointer 如果希望标签可点击 */ /* font-size 和 padding 将在 JS 中动态设置 */ /* transform 用于水平居中 */ transform: translateX(-50%); /* 添加 z-index 确保在 Marker 上方 (如果需要) */ /* z-index: 1; */ }
+    </style>
+    <script type="text/javascript" src="https://api.map.baidu.com/api?v=3.0&type=webgl&ak=fIwK81ZZ3ch8e6RykFGzCi61qzfE1iSt"></script>
+</head>
+<body>
+    <div id="map-container"></div>
+
+    <script>
+        var map; // 地图实例
+        var currentPois = []; // 存储当前地图上显示的 POI Marker
+        // 与 C# 中映射的虚拟主机名一致 (映射的是应用程序根目录)
+        var virtualHost = "appassets.example";
+        // 定义图标、照片和叠加层图像的 URL 前缀
+        var iconBaseUrl = `https://${virtualHost}/Icons/`;
+        var photoBaseUrl = `https://${virtualHost}/PoiImages/`;
+        var overlayBaseUrl = `https://${virtualHost}/Overlays/`;
+        var currentGroundOverlay = null; // 当前的地面叠加层对象
+
+        function CustomLabelOverlay(point, text, poiId) {
+            this._point = point;
+            this._text = text;
+            this._poiId = poiId; // 存储 POI ID
+        }
+        CustomLabelOverlay.prototype = new BMapGL.Overlay();
+        CustomLabelOverlay.prototype.initialize = function (mapInstance) {
+            this._map = mapInstance;
+            // 创建一个 div 元素作为标签容器
+            var div = document.createElement("div");
+            div.className = "custom-poi-label"; // 应用 CSS 样式
+            div.appendChild(document.createTextNode(this._text));
+
+            // --- 添加点击事件处理 ---
+            // 保存 this 引用，因为事件监听器内部的 this 指向 div
+            var self = this;
+            div.onclick = function (event) {
+                // 阻止事件冒泡到地图
+                event.stopPropagation ? event.stopPropagation() : window.event.cancelBubble = true;
+
+                console.log("Custom label clicked for POI ID:", self._poiId);
+                // 发送消息给 C#
+                try {
+                    var message = { type: "poiClick", id: self._poiId };
+                    if (window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage(JSON.stringify(message));
+                        console.log("Sent message to C# from label:", message);
+                    } else { console.error("window.chrome.webview.postMessage is not available."); }
+                } catch (postError) { console.error("Error sending message to C# from label:", postError); }
+            };
+            // ------------------------
+
+            // 将 div 添加到地图的覆盖物容器中
+            this._map.getPanes().labelPane.appendChild(div); // labelPane 通常用于放置文本标签
+            this._div = div; // 保存 div 引用
+            return div; // 返回创建的 DOM 元素
+        }
+        CustomLabelOverlay.prototype.draw = function () {
+            var mapInstance = this._map;
+            var pixel = mapInstance.pointToOverlayPixel(this._point);
+            var currentZoom = mapInstance.getZoom();
+            var newFontSize, newPadding, verticalPixelOffset;
+            // --- 根据缩放级别调整样式 ---
+            if (currentZoom >= 19) {
+                newFontSize = 14; newPadding = '3px 7px'; verticalPixelOffset = 15;
+            } else if (currentZoom >= 17) {
+                newFontSize = 12; newPadding = '2px 6px'; verticalPixelOffset = 10;
+            } else { // currentZoom <= 16
+                newFontSize = 10; newPadding = '1px 5px'; verticalPixelOffset = 8;
+                // 在更低的缩放级别隐藏标签 (可选)
+                if (currentZoom <= 14) {
+                    this.hide(); // 调用隐藏方法
+                    return; // 不再继续绘制
+                } else {
+                    this.show(); // 确保在需要时显示
+                }
+            }
+            this._div.style.fontSize = newFontSize + 'px';
+            this._div.style.padding = newPadding;
+            // --- 设置位置 ---
+            this._div.style.left = pixel.x + 'px';
+            this._div.style.top = pixel.y + verticalPixelOffset + 'px';
+        }
+        CustomLabelOverlay.prototype.show = function () { if (this._div) { this._div.style.display = ""; } }
+        CustomLabelOverlay.prototype.hide = function () { if (this._div) { this._div.style.display = "none"; } }
+        // ------------------------------------
+
+        function initMap() {
+            console.log("JS: initMap function started."); // 日志 1: 进入 initMap
+            var mapContainer = document.getElementById("map-container");
+            if (!mapContainer) {
+                console.error("JS Error: #map-container element not found!"); // 日志 2: 检查容器是否存在
+                alert("错误：找不到地图容器 'map-container'！");
+                return;
+            }
+            console.log("JS: Found #map-container element."); // 日志 3: 确认找到容器
+
+            try {
+                // 检查 BMapGL 是否已定义
+                if (typeof BMapGL === "undefined" || !BMapGL.Map) { // 更严格的检查
+                    console.error("JS Error: BMapGL or BMapGL.Map is not defined."); // 日志 4: 检查 BMapGL API
+                    alert("错误：百度地图 API (BMapGL) 未能正确加载！");
+                    return;
+                }
+                console.log("JS: BMapGL is defined. Attempting to create map instance..."); // 日志 5: 准备创建地图
+
+                // 创建地图实例
+                map = new BMapGL.Map("map-container");
+                console.log("JS: BMapGL.Map object created successfully."); // 日志 6: 地图实例创建成功
+
+                // 设置自定义地图样式
+                try {
+                    map.setMapStyleV2({ styleId: '12cf9028f5f2bf073767ffb49171df17' });
+                    console.log("JS: Custom map style applied using setMapStyleV2."); // 日志 7: 样式设置成功
+                } catch (styleError) {
+                    console.warn("JS Warning: Failed to set custom map style:", styleError); // 日志 8: 样式设置失败 (非致命)
+                }
+
+
+                // 设置地图初始中心点和缩放级别
+                var point = new BMapGL.Point(121.523025, 30.842458);
+                map.centerAndZoom(point, 17);
+                map.setMapType(BMAP_NORMAL_MAP); // 默认普通地图
+                console.log("JS: Map centered and zoomed."); // 日志 9: 中心点和缩放设置成功
+
+                // 启用地图功能和控件
+                map.enableScrollWheelZoom(true);
+                map.addControl(new BMapGL.ScaleControl());
+                map.addControl(new BMapGL.ZoomControl());
+                console.log("JS: Controls added."); // 日志 10: 控件添加成功
+                map.addEventListener('zoomend', function () {
+                    console.log("JS: zoomend event triggered.");
+                    // 缩放结束后更新 Marker 图标大小
+                    updateMarkerIcons();
+                    // 注意: CustomLabelOverlay 的大小由其 draw 方法自动处理，无需在此处调用
+                });
+                console.log("JS: initMap function finished successfully."); // 日志 11: initMap 成功结束
+
+            } catch (error) {
+                console.error("JS Error during map initialization in initMap:", error); // 日志 12: initMap 内部捕获到错误
+                alert("地图初始化过程中发生错误: " + error.message);
+            }
+        }
+
+        function checkBMapGL() {
+            console.log("JS: checkBMapGL called."); // 日志 13: 进入 checkBMapGL
+            if (typeof BMapGL !== "undefined" && BMapGL.Map) {
+                console.log("JS: BMapGL is ready, calling initMap..."); // 日志 14: 确认 API 就绪，准备调用 initMap
+                initMap();
+            } else {
+                console.warn("JS: BMapGL not ready yet, will check again in 500ms."); // 日志 15: API 未就绪，等待
+                setTimeout(checkBMapGL, 500); // 每 500ms 检查一次
+            }
+        }
+
+        function clearAllPois() {
+            console.log(`Clearing ${currentPois.length} POIs (Marker & Label)...`);
+            currentPois.forEach(function (poiItem) {
+                if (map) {
+                    if (poiItem.marker) { map.removeOverlay(poiItem.marker); }
+                    if (poiItem.labelOverlay) { map.removeOverlay(poiItem.labelOverlay); } // 移除自定义标签
+                }
+            });
+            currentPois = []; // 清空数组
+            console.log("POIs cleared.");
+        }
+
+        function addPoisFromJson(jsonString) {
+            console.log("Received command: addPoisFromJson");
+            if (!map || typeof BMapGL === "undefined") { /* ... */ return; }
+            var pois;
+            try { pois = JSON.parse(jsonString); }
+            catch (e) { /* ... */ return; }
+            if (!Array.isArray(pois)) { /* ... */ return; }
+
+            clearAllPois(); // 清除旧标记和标签
+
+            pois.forEach(function (poi) {
+                var marker = null;
+                var labelOverlay = null;
+                var customIcon = null; // 用于存储自定义图标对象
+                try {
+                    if (typeof poi.Longitude !== 'number' || typeof poi.Latitude !== 'number' || !poi.Name || !poi.Id) { /* ... */ return; }
+                    var point = new BMapGL.Point(poi.Longitude, poi.Latitude);
+                    var markerOptions = {};
+
+                    // --- 图标逻辑: 创建图标但不立即设置最终大小 ---
+                    if (poi.IconPath && poi.IconPath.trim() !== "") {
+                        var iconFileName = poi.IconPath.trim();
+                        var iconUrl = iconBaseUrl + encodeURIComponent(iconFileName);
+                        try {
+                            // 创建 Icon 对象，可以先设置一个初始或默认大小
+                            var initialIconSize = new BMapGL.Size(24, 24); // 初始大小
+                            customIcon = new BMapGL.Icon(iconUrl, initialIconSize);
+                            markerOptions.icon = customIcon; // 应用图标
+                        } catch (iconError) {
+                            console.warn(`Failed to create icon for ${iconFileName}:`, iconError);
+                            customIcon = null; // 创建失败则重置
+                        }
+                    }
+                    // ------------------------------------------
+                    marker = new BMapGL.Marker(point, markerOptions);
+                    // --- 点击事件 (保持不变) ---
+                    if (poi.Id) { marker.addEventListener("click", function () { /* ... */ }); }
+                    // -----------------------
+
+                    // --- 创建并添加自定义标签覆盖物 (保持不变) ---
+                    if (poi.Name) {
+                        labelOverlay = new CustomLabelOverlay(point, poi.Name, poi.Id);
+                        map.addOverlay(labelOverlay);
+                    }
+                    // ------------------------------------------
+
+                    map.addOverlay(marker);
+                    // --- 修改: 存储 Marker, 自定义标签, 和图标路径 ---
+                    currentPois.push({
+                        marker: marker,
+                        labelOverlay: labelOverlay,
+                        iconPath: poi.IconPath,
+                        category: poi.Category // 存储类别
+                    });
+                    // --------------------------------------------
+
+                } catch (error) { console.error("Error processing POI:", poi, "Error:", error); }
+            });
+
+            // --- 添加: 添加完所有 POI 后，更新一次 Marker 图标大小 ---
+            updateMarkerIcons();
+            // --------------------------------------------------
+
+            console.log(`Finished processing ${pois.length} POIs. Added ${currentPois.length} items to the map.`);
+        }
+
+        function updateMarkerIcons() {
+            if (!map || !currentPois || currentPois.length === 0) {
+                return; // 如果地图未准备好或没有 POI，则退出
+            }
+            var currentZoom = map.getZoom();
+            console.log(`JS: Updating marker icon sizes for zoom level: ${currentZoom}`);
+
+            var newIconSizeValue; // 图标宽度/高度值
+
+            // 定义不同缩放级别下的图标大小 (可以根据需要调整)
+            if (currentZoom >= 19) {
+                newIconSizeValue = 36; // 最大
+            } else if (currentZoom >= 17) {
+                newIconSizeValue = 30; // 中等
+            } else if (currentZoom >= 15) { // 在较低级别也显示小图标
+                newIconSizeValue = 24; // 较小
+            } else {
+                newIconSizeValue = 18; // 最小，或者可以选择隐藏 Marker
+                // 可以考虑在非常低的缩放级别隐藏 Marker
+                // currentPois.forEach(function(poiItem) { poiItem.marker.hide(); });
+                // return; // 如果隐藏了就不用设置大小了
+            }
+            // 如果之前隐藏了，确保在这里显示回来
+            // currentPois.forEach(function(poiItem) { poiItem.marker.show(); });
+
+
+            var newIconSize = new BMapGL.Size(newIconSizeValue, newIconSizeValue);
+            console.log(`JS: Calculated new icon size: ${newIconSizeValue}x${newIconSizeValue}`);
+
+            // 遍历当前 POI 数组
+            currentPois.forEach(function (poiItem) {
+                if (poiItem.marker && poiItem.iconPath) { // 只处理有 Marker 且指定了 iconPath 的 POI
+                    try {
+                        var icon = poiItem.marker.getIcon();
+                        if (icon && typeof icon.setSize === 'function') { // 确保是 Icon 对象且有 setSize 方法
+                            icon.setSize(newIconSize); // 设置新的大小
+                            // 注意: 仅仅 setSize 可能不够，有时需要重新设置图标才能生效
+                            // poiItem.marker.setIcon(icon); // 可以尝试取消这行注释看看效果
+                        } else if (icon) {
+                            console.warn("JS Warning: Marker icon object does not have setSize method or is not a BMapGL.Icon:", icon);
+                            // 如果不是 BMapGL.Icon (例如默认图标)，可能无法直接调整大小
+                            // 或者需要重新创建一个新的 Icon 对象并设置
+                            // var newIcon = new BMapGL.Icon(icon.imageUrl, newIconSize); // 假设能获取 imageUrl
+                            // poiItem.marker.setIcon(newIcon);
+                        }
+                    } catch (iconError) {
+                        console.warn("JS Warning: Failed to update icon size for marker:", poiItem.marker, iconError);
+                    }
+                }
+            });
+            console.log("JS: Finished updating marker icon sizes.");
+        }
+
+        function setPoiCategoryVisibility(category, isVisible) {
+            console.log(`JS: Setting visibility for category '${category}' to ${isVisible}`);
+            if (!currentPois || currentPois.length === 0) {
+                console.log("JS: No POIs available to set visibility.");
+                return;
+            }
+
+            let changedCount = 0;
+            // 遍历当前存储的 POI
+            currentPois.forEach(function (poiItem) {
+                // 检查类别是否匹配
+                if (poiItem.category === category) {
+                    changedCount++;
+                    // 根据 isVisible 调用 show/hide 方法
+                    if (isVisible) {
+                        if (poiItem.marker) poiItem.marker.show();
+                        if (poiItem.labelOverlay) poiItem.labelOverlay.show();
+                    } else {
+                        if (poiItem.marker) poiItem.marker.hide();
+                        if (poiItem.labelOverlay) poiItem.labelOverlay.hide();
+                    }
+                }
+            });
+            console.log(`JS: Visibility updated for ${changedCount} POIs in category '${category}'.`);
+        }
+
+        function zoomToPoi(lon, lat, zoom) {
+            console.log(`Received command: zoomToPoi(lon=${lon}, lat=${lat}, zoom=${zoom})`);
+            if (map && typeof BMapGL !== "undefined") {
+                try {
+                    var point = new BMapGL.Point(lon, lat);
+                    // 同时设置中心点和缩放级别
+                    map.centerAndZoom(point, zoom);
+                    console.log("Map zoomed to POI successfully.");
+                } catch (error) {
+                    console.error("Error zooming map to POI:", error);
+                }
+            } else {
+                console.error("Map object or BMapGL not ready for zoomToPoi.");
+            }
+        }
+
+        function setMapType(isSatellite) {
+            console.log(`Received command: setMapType(isSatellite=${isSatellite})`);
+            if (map && typeof BMapGL !== "undefined") {
+                try {
+                    if (isSatellite) {
+                        // 切换到卫星图 (BMAP_SATELLITE_MAP 是 API 常量)
+                        map.setMapType(BMAP_SATELLITE_MAP);
+                        console.log("Map type set to Satellite.");
+                    } else {
+                        // 切换到普通矢量地图 (BMAP_NORMAL_MAP 是 API 常量)
+                        map.setMapType(BMAP_NORMAL_MAP);
+                        console.log("Map type set to Normal.");
+                    }
+                } catch (error) {
+                    console.error("Error setting map type:", error);
+                }
+            } else {
+                console.error("Map object or BMapGL not ready for setMapType.");
+            }
+        }
+
+        function addGroundOverlay(overlayData) {
+            console.log("JS: addGroundOverlay function entered."); // 日志 A: 进入函数
+            if (!map || typeof BMapGL === "undefined") {
+                console.error("JS Error: Map not ready in addGroundOverlay.");
+                return;
+            }
+            // 基本的数据验证
+            if (!overlayData || !overlayData.ImageFileName) {
+                console.error("JS Error: Invalid overlayData passed to addGroundOverlay:", overlayData);
+                return;
+            }
+            console.log("JS: overlayData received in addGroundOverlay:", overlayData); // 日志 B: 确认收到的数据
+
+            try {
+                // 1. 创建边界对象
+                console.log("JS: Attempting to create Bounds object..."); // 日志 C
+                var swPoint = new BMapGL.Point(overlayData.SwLon, overlayData.SwLat);
+                var nePoint = new BMapGL.Point(overlayData.NeLon, overlayData.NeLat);
+                var bounds = new BMapGL.Bounds(swPoint, nePoint);
+                console.log("JS: Bounds object created:", bounds); // 日志 D
+
+                // 2. 构建图像 URL
+                var imageUrl = overlayBaseUrl + encodeURIComponent(overlayData.ImageFileName);
+                console.log("JS: Constructed GroundOverlay Image URL:", imageUrl); // 日志 E: 检查 URL 是否正确
+
+                // 3. 创建 GroundOverlay 对象
+                console.log("JS: Attempting to create GroundOverlay object..."); // 日志 F
+                // 使用 try...catch 包裹可能出错的 API 调用
+                try {
+                    currentGroundOverlay = new BMapGL.GroundOverlay(bounds, {
+                        type: 'image',
+                        url: imageUrl,
+                        opacity: 1.0 // 可以调整透明度进行测试
+                    });
+                    console.log("JS: GroundOverlay object created successfully."); // 日志 G
+                } catch (createOverlayError) {
+                    console.error("JS Error creating GroundOverlay object:", createOverlayError); // 日志 H: 创建对象失败
+                    alert("创建叠加层对象时出错: " + createOverlayError.message);
+                    currentGroundOverlay = null; // 确保出错时清空引用
+                    return; // 创建失败，无法继续
+                }
+
+
+                // 4. 将叠加层添加到地图
+                console.log("JS: Attempting to add GroundOverlay to map..."); // 日志 I
+                // 使用 try...catch 包裹可能出错的 API 调用
+                try {
+                    map.addOverlay(currentGroundOverlay);
+                    console.log("JS: GroundOverlay successfully added to map."); // 日志 J: 添加成功
+                } catch (addOverlayError) {
+                    console.error("JS Error adding GroundOverlay to map:", addOverlayError); // 日志 K: 添加失败
+                    alert("将叠加层添加到地图时出错: " + addOverlayError.message);
+                    // 即使添加失败，对象可能已创建，尝试移除（虽然理论上不应添加到 map）
+                    if (currentGroundOverlay) {
+                        // map.removeOverlay(currentGroundOverlay); // 谨慎移除，可能引发其他问题
+                        currentGroundOverlay = null; // 清空引用
+                    }
+                    return; // 添加失败
+                }
+
+            } catch (generalError) {
+                // 捕获创建 Bounds 或其他意外错误
+                console.error("JS Error during addGroundOverlay execution:", generalError);
+                alert("添加图像叠加层过程中发生意外错误: " + generalError.message);
+                currentGroundOverlay = null; // 清空引用
+            }
+        }
+
+        function removeGroundOverlay() {
+            console.log("JS: removeGroundOverlay function started.");
+            if (currentGroundOverlay && map) {
+                try {
+                    map.removeOverlay(currentGroundOverlay);
+                    console.log("JS: Previous GroundOverlay removed.");
+                } catch (error) {
+                    console.error("JS Error: Error removing GroundOverlay:", error);
+                } finally {
+                    currentGroundOverlay = null;
+                }
+            } else {
+                console.log("JS: No active GroundOverlay to remove.");
+            }
+            console.log("JS: removeGroundOverlay function finished.");
+        }
+
+        function switchCampus(campusDataJsonString) { // 重命名参数以示清晰
+            console.log("JS: switchCampus function entered.");
+            if (!map || typeof BMapGL === "undefined") { /* ... */ return; }
+            console.log("JS: Received JSON string from C#:", campusDataJsonString);
+            var campusData;
+            try { campusData = JSON.parse(campusDataJsonString); console.log("JS: Parsed CampusData object:", campusData); }
+            catch (e) { /* ... */ return; }
+            if (!campusData || typeof campusData.CenterLon !== 'number' /* ... */) { /* ... */ return; }
+            console.log("JS: Attempting to remove existing ground overlay...");
+            removeGroundOverlay();
+            try {
+                console.log(`JS: Attempting to set map view...`);
+                var centerPoint = new BMapGL.Point(campusData.CenterLon, campusData.CenterLat);
+                map.centerAndZoom(centerPoint, campusData.DefaultZoom);
+                console.log(`JS: Map view successfully set for ${campusData.Name}`);
+            } catch (setViewError) { /* ... */ }
+            console.log("JS: Checking for overlay image...");
+            if (campusData.OverlayImageFileName && campusData.OverlayImageFileName.trim() !== "") {
+                console.log(`JS: Overlay image found: ${campusData.OverlayImageFileName}. Checking bounds...`);
+                if (typeof campusData.SwLon === 'number' /* ... 验证边界 ... */) {
+                    console.log("JS: Overlay bounds are valid. Attempting to call addGroundOverlay..."); // 修改日志
+                    addGroundOverlay({ // 传递对象
+                        ImageFileName: campusData.OverlayImageFileName,
+                        SwLon: campusData.SwLon,
+                        SwLat: campusData.SwLat,
+                        NeLon: campusData.NeLon,
+                        NeLat: campusData.NeLat
+                    });
+                } else { console.warn(`JS: Campus ${campusData.Name} has OverlayImageFileName but invalid bounds data...`); }
+            } else { console.log(`JS: Campus ${campusData.Name} has no overlay image specified.`); }
+            console.log("JS: switchCampus function finished.");
+        }
+
+        console.log("JS: map.html script execution started."); // 日志 0: 脚本开始
+
+        // 开始检测百度地图 API 是否加载完成
+        checkBMapGL();
+
+        // 全局错误处理
+        window.onerror = function (message, source, lineno, colno, error) {
+            console.error("JavaScript Error:", message, "at", source, ":", lineno, "col:", colno, "Error object:", error);
+            alert(`发生脚本错误: ${message}\n源文件: ${source}\n行号: ${lineno}`); // 弹窗提示错误详情
+        };
+    </script>
+</body>
+</html>
+
